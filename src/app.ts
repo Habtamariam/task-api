@@ -2,6 +2,8 @@
 import express from "express";
 // Import middleware that logs every incoming request.
 import { logger } from "./middleware/logger.middleware.js";
+// Import the final middleware that formats application errors.
+import { errorHandler } from "./middleware/error.middleware.js";
 // Import the router containing all task endpoints.
 import taskRoutes from "./routes/task.routes.js";
 
@@ -21,6 +23,9 @@ app.get("/", (req, res) => {
 
 // Mount taskRoutes so its paths start with /api/tasks.
 app.use("/api/tasks", taskRoutes);
+
+// Register error handling last so it can catch errors from all routes above.
+app.use(errorHandler);
 
 // Export the configured app so server.ts and tests can use it.
 export default app;

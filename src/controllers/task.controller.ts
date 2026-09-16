@@ -1,85 +1,121 @@
-// Import only the Express types needed to type request handlers.
-import type { Request, Response } from "express";
+// Import Express types for asynchronous request handlers.
+import type { NextFunction, Request, Response } from "express";
+// Import Drizzle's equality helper for WHERE clauses.
+import { eq } from "drizzle-orm";
+// Import the database client used to execute queries.
+import { db } from "../db/client.js";
+// Import the Drizzle table definition used by every query.
+import { tasks } from "../db/schema.js";
+// Import the custom error used for expected client-facing failures.
+import { AppError } from "../errors/AppError.js";
 
-// Describe the shape of every task stored by this temporary API.
-type Task = {
-  // Unique numeric identifier for the task.
-  id: number;
-  // Required task title.
-  title: string;
-  // Optional task details, stored as a string.
-  description: string;
-  // Whether the task has been completed.
-  completed: boolean;
-};
-
-// Temporary in-memory storage; data is lost when the server restarts.
-let tasks: Task[] = [];
-// Simple counter used to assign the next task ID.
-let nextId = 1;
-
-// Return every task in the in-memory collection.
-export const getTasks = (req: Request, res: Response) => {
-  res.json(tasks);
-};
-
-// Find and return one task using the ID from the URL.
-export const getTask = (req: Request, res: Response) => {
-  // Route parameters are strings, so convert the ID before comparing it.
-  const task = tasks.find((item) => item.id === Number(req.params.id));
-
-  // Stop here with 404 when no task has that ID.
-  if (!task) {
-    return res.status(404).json({ message: "Task not found" });
+// Read every task from PostgreSQL.
+export const getTasks = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // select().from(tasks) becomes SELECT * FROM tasks.
+    const taskList = await db.select().from(tasks);
+    res.json(taskList);
+  } catch (err) {
+    // Forward database failures to the centralized error handler.
+    next(err);
   }
-
-  // Return the matching task.
-  res.json(task);
 };
 
-// Create and store a task from the validated request body.
-export const createTask = (req: Request, res: Response) => {
-  // Build a new task and assign a unique ID.
-  const task: Task = {
-    id: nextId++,
-    title: req.body.title,
-    description: req.body.description || "",
-    completed: false,
-  };
+// Read one task by the numeric ID in the URL.
+export const getTask = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // URL parameters are strings, so convert the ID before querying PostgreSQL.
+    const [task] = await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, Number(req.params.id)));
 
-  // Add the new task to memory and return HTTP 201 Created.
-  tasks.push(task);
-  res.status(201).json(task);
-};
+    // Forward a controlled 404 error when no row matches the ID.
+    if (!task) {
+      return next(new AppError("Task not found", 404));
+    }
 
-// Update selected fields on an existing task.
-export const updateTask = (req: Request, res: Response) => {
-  // Locate the task identified by the URL parameter.
-  const task = tasks.find((item) => item.id === Number(req.params.id));
-
-  // Stop here if the requested task does not exist.
-  if (!task) {
-    return res.status(404).json({ message: "Task not found" });
+    // Return the row found by the database.
+    res.json(task);
+  } catch (err) {
+    // Forward database failures to the centralized error handler.
+    next(err);
   }
-
-  // Merge only the fields supplied by the client.
-  Object.assign(task, req.body);
-  // Return the updated task.
-  res.json(task);
 };
 
-// Delete an existing task by its URL ID.
-export const deleteTask = (req: Request, res: Response) => {
-  // Check first so deleting a missing task returns a useful 404 response.
-  const taskExists = tasks.some((item) => item.id === Number(req.params.id));
-
-  // Stop here when there is nothing to delete.
-  if (!taskExists) {
-    return res.status(404).json({ message: "Task not found" });
+// Insert a validated request body into PostgreSQL.
+export const createTask = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // returning() gives back the inserted row, including its generated ID.
+    const [task] = await db.insert(tasks).values(req.body).returning();
+    res.status(201).json(task);
+  } catch (err) {
+    // Forward database failures to the centralized error handler.
+    next(err);
   }
+};
 
-  // Keep every task except the one being deleted.
-  tasks = tasks.filter((item) => item.id !== Number(req.params.id));
-  // 204 means success with no response body.
-  res.status(204).send();
+// Update selected fields on an existing database row.
+export const updateTask = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // Update only the fields supplied by the client and refresh updatedAt.
+    const [task] = await db
+      .update(tasks)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(tasks.id, Number(req.params.id)))
+      .returning();
+
+    // Forward a controlled 404 error when no row was updated.
+    if (!task) {
+      return next(new AppError("Task not found", 404));
+    }
+
+    // Return the updated database row.
+    res.json(task);
+  } catch (err) {
+    // Forward database failures to the centralized error handler.
+    next(err);
+  }
+};
+
+// Delete an existing database row by its URL ID.
+export const deleteTask = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // returning() tells us whether a row with this ID existed.
+    const deleted = await db
+      .delete(tasks)
+      .where(eq(tasks.id, Number(req.params.id)))
+      .returning({ id: tasks.id });
+
+    // Forward a controlled 404 error when no row was deleted.
+    if (deleted.length === 0) {
+      return next(new AppError("Task not found", 404));
+    }
+
+    // 204 means successful deletion with no response body.
+    res.status(204).send();
+  } catch (err) {
+    // Forward database failures to the centralized error handler.
+    next(err);
+  }
 };
