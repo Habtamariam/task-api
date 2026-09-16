@@ -8,6 +8,20 @@
       "when": 1789551508360,
       "tag": "0000_flashy_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789559524070,
+      "tag": "0001_familiar_captain_midlands",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789564274572,
+      "tag": "0002_blue_wild_child",
+      "breakpoints": true
     }
   ]
 }

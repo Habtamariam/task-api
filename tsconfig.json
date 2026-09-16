@@ -12,6 +12,8 @@
     "outDir": "dist",
     // Enable strict checks so TypeScript catches more mistakes.
     "strict": true,
+    // Allow ts-jest to transform NodeNext modules safely during tests.
+    "isolatedModules": true,
     // Allow default-style imports from CommonJS packages.
     "esModuleInterop": true,
     // Make file-name casing consistent across operating systems.

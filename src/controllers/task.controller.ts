@@ -1,121 +1,114 @@
 // Import Express types for asynchronous request handlers.
-import type { NextFunction, Request, Response } from "express";
-// Import Drizzle's equality helper for WHERE clauses.
-import { eq } from "drizzle-orm";
-// Import the database client used to execute queries.
-import { db } from "../db/client.js";
-// Import the Drizzle table definition used by every query.
-import { tasks } from "../db/schema.js";
+import type { NextFunction, Response } from "express";
+// Import the request type populated by requireAuth.
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 // Import the custom error used for expected client-facing failures.
 import { AppError } from "../errors/AppError.js";
 
-// Read every task from PostgreSQL.
+// Import database operations from the service layer.
+import {
+  createTaskService,
+  deleteTaskService,
+  getTaskService,
+  getTasksService,
+  updateTaskService,
+} from "../services/task.service.js";
+import type { TaskListQuery } from "../services/task.service.js";
+
+// Ask the service for every task and send the result as JSON.
 export const getTasks = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // select().from(tasks) becomes SELECT * FROM tasks.
-    const taskList = await db.select().from(tasks);
+    const taskList = await getTasksService(
+      req.user!.id,
+      req.query as TaskListQuery,
+    );
     res.json(taskList);
   } catch (err) {
-    // Forward database failures to the centralized error handler.
+    // Send unexpected database errors to the centralized error handler.
     next(err);
   }
 };
 
-// Read one task by the numeric ID in the URL.
+// Ask the service for one task and handle the HTTP response.
 export const getTask = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // URL parameters are strings, so convert the ID before querying PostgreSQL.
-    const [task] = await db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, Number(req.params.id)));
+    // URL parameters are strings, so convert the ID before calling the service.
+    const task = await getTaskService(req.user!.id, Number(req.params.id));
 
-    // Forward a controlled 404 error when no row matches the ID.
+    // Controllers decide which HTTP response represents a missing resource.
     if (!task) {
       return next(new AppError("Task not found", 404));
     }
 
-    // Return the row found by the database.
     res.json(task);
   } catch (err) {
-    // Forward database failures to the centralized error handler.
     next(err);
   }
 };
 
-// Insert a validated request body into PostgreSQL.
+// Pass validated request data to the service and return HTTP 201 Created.
 export const createTask = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // returning() gives back the inserted row, including its generated ID.
-    const [task] = await db.insert(tasks).values(req.body).returning();
+    const task = await createTaskService(req.user!.id, req.body);
     res.status(201).json(task);
   } catch (err) {
-    // Forward database failures to the centralized error handler.
     next(err);
   }
 };
 
-// Update selected fields on an existing database row.
+// Ask the service to update a task and return the updated row.
 export const updateTask = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // Update only the fields supplied by the client and refresh updatedAt.
-    const [task] = await db
-      .update(tasks)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(tasks.id, Number(req.params.id)))
-      .returning();
+    const task = await updateTaskService(
+      req.user!.id,
+      Number(req.params.id),
+      req.body,
+    );
 
-    // Forward a controlled 404 error when no row was updated.
     if (!task) {
       return next(new AppError("Task not found", 404));
     }
 
-    // Return the updated database row.
     res.json(task);
   } catch (err) {
-    // Forward database failures to the centralized error handler.
     next(err);
   }
 };
 
-// Delete an existing database row by its URL ID.
+// Ask the service to delete a task and return HTTP 204 on success.
 export const deleteTask = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // returning() tells us whether a row with this ID existed.
-    const deleted = await db
-      .delete(tasks)
-      .where(eq(tasks.id, Number(req.params.id)))
-      .returning({ id: tasks.id });
+    const deleted = await deleteTaskService(
+      req.user!.id,
+      Number(req.params.id),
+    );
 
-    // Forward a controlled 404 error when no row was deleted.
-    if (deleted.length === 0) {
+    if (!deleted) {
       return next(new AppError("Task not found", 404));
     }
 
-    // 204 means successful deletion with no response body.
     res.status(204).send();
   } catch (err) {
-    // Forward database failures to the centralized error handler.
     next(err);
   }
 };
