@@ -1,1 +1,2 @@
+# Run staged-file checks before Git creates a commit.
 pnpm exec lint-staged

@@ -1,14 +1,24 @@
 {
   "compilerOptions": {
+    // Compile modern JavaScript syntax for the current Node.js runtime.
     "target": "ES2022",
+    // Use Node's native ES module rules for TypeScript imports.
     "module": "NodeNext",
+    // Resolve imports using the same rules as NodeNext modules.
     "moduleResolution": "NodeNext",
+    // Treat src as the root of the TypeScript source files.
     "rootDir": "src",
+    // Write compiled JavaScript files into dist.
     "outDir": "dist",
+    // Enable strict checks so TypeScript catches more mistakes.
     "strict": true,
+    // Allow default-style imports from CommonJS packages.
     "esModuleInterop": true,
+    // Make file-name casing consistent across operating systems.
     "forceConsistentCasingInFileNames": true,
+    // Skip checking declaration files inside dependencies.
     "skipLibCheck": true
   },
+  // Compile every TypeScript file inside the source directory.
   "include": ["src"]
 }
